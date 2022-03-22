@@ -1,0 +1,22 @@
+#-----------------------------------------------------------
+# Vivado v2019.1 (64-bit)
+# SW Build 2552052 on Fri May 24 14:49:42 MDT 2019
+# IP Build 2548770 on Fri May 24 18:01:18 MDT 2019
+# Start of session at: Mon Mar 21 22:50:47 2022
+# Process ID: 21084
+# Current directory: C:/Xilinx/Labs/Lab3/ECE315Lab3/project_files/lab3_SPI
+# Command line: vivado.exe -gui_launcher_event rodinguilauncherevent19076 C:\Xilinx\Labs\Lab3\ECE315Lab3\project_files\lab3_SPI\lab3_SPI.xpr
+# Log file: C:/Xilinx/Labs/Lab3/ECE315Lab3/project_files/lab3_SPI/vivado.log
+# Journal file: C:/Xilinx/Labs/Lab3/ECE315Lab3/project_files/lab3_SPI\vivado.jou
+#-----------------------------------------------------------
+start_gui
+open_project C:/Xilinx/Labs/Lab3/ECE315Lab3/project_files/lab3_SPI/lab3_SPI.xpr
+update_compile_order -fileset sources_1
+reset_run synth_1
+launch_runs impl_1 -to_step write_bitstream -jobs 6
+wait_on_run impl_1
+open_run impl_1
+file mkdir C:/Xilinx/Labs/Lab3/ECE315Lab3/project_files/lab3_SPI/lab3_SPI.sdk
+file copy -force C:/Xilinx/Labs/Lab3/ECE315Lab3/project_files/lab3_SPI/lab3_SPI.runs/impl_1/design_1_wrapper.sysdef C:/Xilinx/Labs/Lab3/ECE315Lab3/project_files/lab3_SPI/lab3_SPI.sdk/design_1_wrapper.hdf
+
+launch_sdk -workspace C:/Xilinx/Labs/Lab3/ECE315Lab3/project_files/lab3_SPI/lab3_SPI.sdk -hwspec C:/Xilinx/Labs/Lab3/ECE315Lab3/project_files/lab3_SPI/lab3_SPI.sdk/design_1_wrapper.hdf
