@@ -181,7 +181,6 @@ static void TaskUartManager( void *pvParameters ){
 			u8 dummy = DOLLAR; 				// dummy char to send to the slave as a control character
 			int loop_counter = str_length; 	// loop count for sending the dummy char
 			for(int i=0;i<loop_counter;i++){
-
 				/*******************************************/
 				//write the logic to send the "dummy" control character using the FIFO1
 				xQueueSendToBack(xQueue_FIFO1,&dummy,0UL);
@@ -270,24 +269,18 @@ static void TaskSpi0Master( void *pvParameters ){
 
 			//Load buffer with FIFO1 input byte
 			send_buffer[0] = task2_receive_from_FIFO1;
-//			xil_printf("\nsend_buffer[0] (task2_receive_from_FIFO1): %x\n", send_buffer[0]);
 
 			bytecount++;
 			if(bytecount==TRANSFER_SIZE_IN_BYTES){
-
 				//Send byte to slave
 				SpiMasterWrite(&send_buffer[0], TRANSFER_SIZE_IN_BYTES);
+
 				//Allow slaveSPI task to work
 				taskYIELD();
 
-
 				//Load SpiMasterRead output into send_buffer
 				send_buffer[0] = SpiMasterRead(TRANSFER_SIZE_IN_BYTES);
-//				xil_printf("send_buffer[0] (SpiMasterRead()): %x\n", send_buffer[0]);
 				send_SPI_data_via_FIFO2 = send_buffer[0];
-
-//				SpiMasterWrite(&send_buffer[0], bytecount);
-
 
 				//Send to FIFO2
 				xQueueSendToBack(xQueue_FIFO2,&send_SPI_data_via_FIFO2,0UL);
@@ -327,53 +320,42 @@ static void TaskSpi1Slave( void *pvParameters ){
 		//Once \r#\r is detected you want to now send the message string and you may use a looping method to send it to the SPI master.
 
 		if(spi_master_loopback_en==0 && current_command_execution_flag==2){
-
 			//Read byte sent from master
 			SpiSlaveRead(TRANSFER_SIZE_IN_BYTES);
 			temp_store = RxBuffer_Slave[0];
-//			xil_printf("\ntemp_store (RxBuffer_Slave[0]): %x\r\n", temp_store);
+
+			//Incremement num_received excluding termination sequence
 			if (temp_store != CHAR_CARRIAGE_RETURN && temp_store != CHAR_POUND_HASH && temp_store != DOLLAR)
 				num_received++;
 
-			
-//			xil_printf("end_sequence_flag == %x\r\n", end_sequence_flag);
+			//End sequence
 			if(end_sequence_flag == 3){
-				//Execute termination sequence
-
+				//When detected, print send # of characters received message to master
 				str_length = sprintf(buffer, "The number of characters received over SPI: %d\r\n", num_received);
-//				xil_printf("str_length: %x\r\n", str_length);
-//				int length = (sizeof(buffer)/sizeof(char));
-//				xil_printf("length: %x\r\n", length);
-
-				//Send # of characters received message to master
 				for (int i = 0; i < str_length; i++) {
-					temp_store = (u8)buffer[i];
-//					xil_printf(" - buffer: %x\r\n", buffer[i]);
+					temp_store = buffer[i];
 					SpiSlaveWrite(&temp_store, TRANSFER_SIZE_IN_BYTES);
 					SpiSlaveRead(TRANSFER_SIZE_IN_BYTES);
 				}
 
-				//Reset # of received bytes and end sequence flag
+				//Reset end_sequence_flag and num_received
 				end_sequence_flag = 0;
 				num_received = 0;
-
 			} else {
-				//Detect termination sequence input
-				if(temp_store == CHAR_CARRIAGE_RETURN && end_sequence_flag==2)
-						end_sequence_flag +=1;
-					else if(temp_store == CHAR_POUND_HASH && end_sequence_flag==1)
-						end_sequence_flag +=1;
-					else if(temp_store == CHAR_CARRIAGE_RETURN && end_sequence_flag==0)
-						end_sequence_flag +=1;
-					else
-						end_sequence_flag=0;
+				//Check for end sequence input
+				if (temp_store == CHAR_CARRIAGE_RETURN && end_sequence_flag==0)
+					end_sequence_flag++;
+				else if (temp_store == CHAR_POUND_HASH && end_sequence_flag==1)
+					end_sequence_flag++;
+				else if (temp_store == CHAR_CARRIAGE_RETURN && end_sequence_flag==2)
+					end_sequence_flag++;
+				else
+					end_sequence_flag=0;
+
 				SpiSlaveWrite(&temp_store, TRANSFER_SIZE_IN_BYTES);
 			}
-			//				xQueueSendToBack(xQueue_FIFO2,&task2_receive_from_FIFO1,0UL);
 		}
-
 		/*******************************************/
-
 		vTaskDelay(1);
 	}
 }
