@@ -184,12 +184,16 @@ static void TaskUartManager( void *pvParameters ){
 
 				/*******************************************/
 				//write the logic to send the "dummy" control character using the FIFO1
+				xQueueSendToBack(xQueue_FIFO1,&dummy,0UL);
+
 				//Also wait on to receive the bytes coming from the SPIMaster task via FIFO2
+				xQueueReceive(xQueue_FIFO2, &task1_receive_from_FIFO2_spi_data, portMAX_DELAY);
+
 				//If there is space on the Transmitter UART side, send it to the UART using an appropriate UART write function.
-
-				//Send to where?
-
-
+				if XUartPs_IsTransmitFull(XPAR_XUARTPS_0_BASEADDR) {}
+				else {
+					XUartPs_SendByte(XPAR_XUARTPS_0_BASEADDR, task1_receive_from_FIFO2_spi_data);
+				}
 				/*******************************************/
 			}
 			flag=0;
@@ -254,24 +258,39 @@ static void TaskSpi0Master( void *pvParameters ){
 
 		if(spi_master_loopback_en==1 && current_command_execution_flag==2) 				//just send the characters back to task 1. No SPI access! This is because loopback is currently enabled.
 			xQueueSendToBack(xQueue_FIFO2,&task2_receive_from_FIFO1,0UL);
+
 		else if ((spi_master_loopback_en==0) && (current_command_execution_flag==2)){ 	//if global variable spi_master_loopback_en=0, we enable SPI connection mode now!
 			/*******************************************/
 			//write the code here to copy the received data from the FIFO1 into "sendbuffer" variable. The "sendbuffer" variable is declared for you.
 			//You want to transfer the bytes based on the TRANSFER_SIZE_IN_BYTES value.
 			//You can use the write function for MasterSPI (from the driver file) for that and
 			// then you want to use task_YIELD() that allows the slave SPI task to work.
-			//Finally, you want to use the read from master implementation using the function from the driver file provided. Then send the data to the back of the FIFO2 and reset the "bytecount" variable to zero.
+			//Finally, you want to use the read from master implementation using the function from the driver file provided.
+			// Then send the data to the back of the FIFO2 and reset the "bytecount" variable to zero.
 
+			//Load buffer with FIFO1 input byte
 			send_buffer[0] = task2_receive_from_FIFO1;
-//			xil_printf("send_buffer[0]: %x\n", send_buffer[0]);
+//			xil_printf("\nsend_buffer[0] (task2_receive_from_FIFO1): %x\n", send_buffer[0]);
 
 			bytecount++;
 			if(bytecount==TRANSFER_SIZE_IN_BYTES){
-				SpiMasterWrite(&send_buffer[0], bytecount);
-				taskYIELD(); //Allow slaveSPI task to work
 
-				SpiMasterRead(bytecount);
-				xQueueSendToBack(xQueue_FIFO2,&task2_receive_from_FIFO1,0UL);
+				//Send byte to slave
+				SpiMasterWrite(&send_buffer[0], TRANSFER_SIZE_IN_BYTES);
+				//Allow slaveSPI task to work
+				taskYIELD();
+
+
+				//Load SpiMasterRead output into send_buffer
+				send_buffer[0] = SpiMasterRead(TRANSFER_SIZE_IN_BYTES);
+//				xil_printf("send_buffer[0] (SpiMasterRead()): %x\n", send_buffer[0]);
+				send_SPI_data_via_FIFO2 = send_buffer[0];
+
+//				SpiMasterWrite(&send_buffer[0], bytecount);
+
+
+				//Send to FIFO2
+				xQueueSendToBack(xQueue_FIFO2,&send_SPI_data_via_FIFO2,0UL);
 				bytecount=0;
 
 			}
@@ -291,14 +310,6 @@ static void TaskSpi1Slave( void *pvParameters ){
 //	Initialize_SPI_0_and_1(SPI_0_DEVICE_ID,SPI_1_DEVICE_ID);
 
 	while(1){
-//		xQueueReceive( 	xQueue_FIFO1,
-//								&task2_receive_from_FIFO1, 										//queue to receive the data from UART Manager task
-//								portMAX_DELAY );
-//
-//				if(spi_master_loopback_en==1 && current_command_execution_flag==2) 				//just send the characters back to task 1. No SPI access! This is because loopback is currently enabled.
-//					xQueueSendToBack(xQueue_FIFO2,&task2_receive_from_FIFO1,0UL);
-//				else if ((spi_master_loopback_en==0) && (current_command_execution_flag==2)){
-
 
 		/*******************************************/
 		//Write the following logic here:
@@ -307,6 +318,7 @@ static void TaskSpi1Slave( void *pvParameters ){
 		//A variable to keep track of the characters, is declared in the task.
 		//You want to enclose entire logic in this task inside the given "if" condition based on the "spi_master_loopback_en" and
 		// "current_command_execution_flag". This "if" condition is written for you!
+
 		//You want to also use SpiSlave read and write functions from the driver file in this task as needed.
 		//"RxBuffer_Slave" variable is used to read the slave. Have a look once at this variable in the driver file.
 		//"end_sequence_flag" variable is set to 3 when termination sequence (\r#\r) is successfully detected.
@@ -314,16 +326,52 @@ static void TaskSpi1Slave( void *pvParameters ){
 		//Make sure that until the termination sequence, you want to keep on sending the bytes back to SPI master.
 		//Once \r#\r is detected you want to now send the message string and you may use a looping method to send it to the SPI master.
 
-		// check if the user entered the termination sequence
-		// if so, increment end_sequence_detect_flag to 3
-		checkForTerminationSequence();
-//		if((current_command_execution_flag == 1 && task1_uart_loopback_en == 1) | (current_command_execution_flag == 2 && spi_master_loopback_en==1)){
-
-//		xil_printf("\n The number of characters received over SPI: %x\r\n", num_received);
 		if(spi_master_loopback_en==0 && current_command_execution_flag==2){
 
+			//Read byte sent from master
+			SpiSlaveRead(TRANSFER_SIZE_IN_BYTES);
+			temp_store = RxBuffer_Slave[0];
+//			xil_printf("\ntemp_store (RxBuffer_Slave[0]): %x\r\n", temp_store);
+			if (temp_store != CHAR_CARRIAGE_RETURN && temp_store != CHAR_POUND_HASH && temp_store != DOLLAR)
+				num_received++;
 
+			
+//			xil_printf("end_sequence_flag == %x\r\n", end_sequence_flag);
+			if(end_sequence_flag == 3){
+				//Execute termination sequence
+
+				str_length = sprintf(buffer, "The number of characters received over SPI: %d\r\n", num_received);
+//				xil_printf("str_length: %x\r\n", str_length);
+//				int length = (sizeof(buffer)/sizeof(char));
+//				xil_printf("length: %x\r\n", length);
+
+				//Send # of characters received message to master
+				for (int i = 0; i < str_length; i++) {
+					temp_store = (u8)buffer[i];
+//					xil_printf(" - buffer: %x\r\n", buffer[i]);
+					SpiSlaveWrite(&temp_store, TRANSFER_SIZE_IN_BYTES);
+					SpiSlaveRead(TRANSFER_SIZE_IN_BYTES);
+				}
+
+				//Reset # of received bytes and end sequence flag
+				end_sequence_flag = 0;
+				num_received = 0;
+
+			} else {
+				//Detect termination sequence input
+				if(temp_store == CHAR_CARRIAGE_RETURN && end_sequence_flag==2)
+						end_sequence_flag +=1;
+					else if(temp_store == CHAR_POUND_HASH && end_sequence_flag==1)
+						end_sequence_flag +=1;
+					else if(temp_store == CHAR_CARRIAGE_RETURN && end_sequence_flag==0)
+						end_sequence_flag +=1;
+					else
+						end_sequence_flag=0;
+				SpiSlaveWrite(&temp_store, TRANSFER_SIZE_IN_BYTES);
+			}
+			//				xQueueSendToBack(xQueue_FIFO2,&task2_receive_from_FIFO1,0UL);
 		}
+
 		/*******************************************/
 
 		vTaskDelay(1);
