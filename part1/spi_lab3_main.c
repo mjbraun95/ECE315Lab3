@@ -17,18 +17,18 @@
  *
  * User enters the command in following ways:
  * For example, after you load the application on to the board, a menu will be displayed. If you type anything, nothing will be displayed on the console.
- * 
+ *
  * Menu command 1:
  * Let's say user wants to execute the menu command 1. You can do this using "enter, command, enter". In this it is <ENTER> <1> <ENTER>.
- * Now, UART Manager loopback is enabled. Anything you type is displayed on the SDK console. 
- * 
+ * Now, UART Manager loopback is enabled. Anything you type is displayed on the SDK console.
+ *
  * <ENTER><1><ENTER> can be entered to change the UART Manager task loop back from enable to disable mode. This can also be done using the <ENTER><#><ENTER>.
  * To change the UART Manager loop back from disable to enable mode, use <ENTER><1><ENTER>. Going from UART disable to enable loopback can only be done using <ENTER><1><ENTER>
  *
  * Menu command 2:
  * Initially,
  * <ENTER><2><ENTER> enables the second FreeRTOS task's loop back. Which means there is no connection between SPI 0-SPI 1. Currently, there is a loopback from Task1->Task2->Task1.
- * This is done using FIFO1 and FIFO2. Students need to figure how FIFO1 and FIFO2 are playing the role in this implementation. 
+ * This is done using FIFO1 and FIFO2. Students need to figure how FIFO1 and FIFO2 are playing the role in this implementation.
  * You can now enable the SPI 0 - SPI 1 connection using <ENTER><2><ENTER> or <ENTER><#><ENTER>.
  * However, to switch from SPI mode to loop back mode for menu command 2, you must use <ENTER><2><ENTER>.
  * -----------------------------------------------
@@ -187,6 +187,8 @@ static void TaskUartManager( void *pvParameters ){
 				//Also wait on to receive the bytes coming from the SPIMaster task via FIFO2
 				//If there is space on the Transmitter UART side, send it to the UART using an appropriate UART write function.
 
+				//Send to where?
+
 
 				/*******************************************/
 			}
@@ -256,14 +258,22 @@ static void TaskSpi0Master( void *pvParameters ){
 			/*******************************************/
 			//write the code here to copy the received data from the FIFO1 into "sendbuffer" variable. The "sendbuffer" variable is declared for you.
 			//You want to transfer the bytes based on the TRANSFER_SIZE_IN_BYTES value.
-			//You can use the write function for MasterSPI (from the driver file) for that and then you want to use task_YIELD() that allows the slave SPI task to work.
+			//You can use the write function for MasterSPI (from the driver file) for that and
+			// then you want to use task_YIELD() that allows the slave SPI task to work.
 			//Finally, you want to use the read from master implementation using the function from the driver file provided. Then send the data to the back of the FIFO2 and reset the "bytecount" variable to zero.
-			
+
+			send_buffer[0] = task2_receive_from_FIFO1;
+//			xil_printf("send_buffer[0]: %x\n", send_buffer[0]);
+
 			bytecount++;
 			if(bytecount==TRANSFER_SIZE_IN_BYTES){
-				
-				
-				
+				SpiMasterWrite(&send_buffer[0], bytecount);
+				taskYIELD(); //Allow slaveSPI task to work
+
+				SpiMasterRead(bytecount);
+				xQueueSendToBack(xQueue_FIFO2,&task2_receive_from_FIFO1,0UL);
+				bytecount=0;
+
 			}
 			/*******************************************/
 
@@ -278,12 +288,25 @@ static void TaskSpi1Slave( void *pvParameters ){
 	int num_received = 0;
 	char buffer[48];
 
+//	Initialize_SPI_0_and_1(SPI_0_DEVICE_ID,SPI_1_DEVICE_ID);
+
 	while(1){
+//		xQueueReceive( 	xQueue_FIFO1,
+//								&task2_receive_from_FIFO1, 										//queue to receive the data from UART Manager task
+//								portMAX_DELAY );
+//
+//				if(spi_master_loopback_en==1 && current_command_execution_flag==2) 				//just send the characters back to task 1. No SPI access! This is because loopback is currently enabled.
+//					xQueueSendToBack(xQueue_FIFO2,&task2_receive_from_FIFO1,0UL);
+//				else if ((spi_master_loopback_en==0) && (current_command_execution_flag==2)){
+
 
 		/*******************************************/
 		//Write the following logic here:
-		//Detect the termination sequence. We also keep track of number of characters received via SPI connection. A variable to keep track of the characters, is declared in the task.
-		//You want to enclose entire logic in this task inside the given "if" condition based on the "spi_master_loopback_en" and  "current_command_execution_flag". This "if" condition is written for you!
+		//Detect the termination sequence.
+		// We also keep track of number of characters received via SPI connection.
+		//A variable to keep track of the characters, is declared in the task.
+		//You want to enclose entire logic in this task inside the given "if" condition based on the "spi_master_loopback_en" and
+		// "current_command_execution_flag". This "if" condition is written for you!
 		//You want to also use SpiSlave read and write functions from the driver file in this task as needed.
 		//"RxBuffer_Slave" variable is used to read the slave. Have a look once at this variable in the driver file.
 		//"end_sequence_flag" variable is set to 3 when termination sequence (\r#\r) is successfully detected.
@@ -291,8 +314,14 @@ static void TaskSpi1Slave( void *pvParameters ){
 		//Make sure that until the termination sequence, you want to keep on sending the bytes back to SPI master.
 		//Once \r#\r is detected you want to now send the message string and you may use a looping method to send it to the SPI master.
 
+		// check if the user entered the termination sequence
+		// if so, increment end_sequence_detect_flag to 3
+		checkForTerminationSequence();
+//		if((current_command_execution_flag == 1 && task1_uart_loopback_en == 1) | (current_command_execution_flag == 2 && spi_master_loopback_en==1)){
+
+//		xil_printf("\n The number of characters received over SPI: %x\r\n", num_received);
 		if(spi_master_loopback_en==0 && current_command_execution_flag==2){
-		
+
 
 		}
 		/*******************************************/
@@ -325,7 +354,7 @@ void executeSpiMasterCommand(void){
 	else{
 		xQueueReceive(xQueue_FIFO2, &task1_receive_from_FIFO2_spi_data, portMAX_DELAY);
 		while (XUartPs_IsTransmitFull(XPAR_XUARTPS_0_BASEADDR) == TRUE){};
-		XUartPs_WriteReg(XPAR_XUARTPS_0_BASEADDR, XUARTPS_FIFO_OFFSET, task1_receive_from_FIFO2_spi_data);	
+		XUartPs_WriteReg(XPAR_XUARTPS_0_BASEADDR, XUARTPS_FIFO_OFFSET, task1_receive_from_FIFO2_spi_data);
 	}
 }
 
